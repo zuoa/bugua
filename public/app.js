@@ -705,6 +705,7 @@ function renderTossCard(toss) {
 
 function renderResultScreen() {
   const result = state.result;
+  const hasAiInterpretation = Boolean(state.ai.text || result.aiText);
   return `
     <section class="result-hero panel reveal">
       <div class="result-copy">
@@ -761,15 +762,22 @@ function renderResultScreen() {
     ${
       state.config.llmEnabled
         ? `
-        <section class="panel ai-panel reveal delay-3">
+        <section class="panel ai-panel reveal delay-3" ${state.ai.loading ? 'aria-busy="true"' : ""}>
           <div class="ai-head">
             <div>
               <p class="eyebrow">幽微解意</p>
               <h2>再入一层卦气，看看此事暗线如何流转</h2>
             </div>
-            <button class="primary-button" data-action="ask-ai" ${state.ai.loading ? "disabled" : ""}>
-              ${state.ai.loading ? "卦气推衍中..." : "再参一层"}
-            </button>
+            ${
+              hasAiInterpretation && !state.ai.loading
+                ? ""
+                : `
+                  <button class="primary-button ai-trigger ${state.ai.loading ? "is-loading" : ""}" data-action="ask-ai" ${state.ai.loading ? "disabled" : ""}>
+                    <span class="ai-trigger-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                    <span>${state.ai.loading ? "推解中" : "再参一层"}</span>
+                  </button>
+                `
+            }
           </div>
           ${
             state.ai.error
@@ -777,7 +785,24 @@ function renderResultScreen() {
               : ""
           }
           ${
-            state.ai.text
+            state.ai.loading
+              ? `
+                <div class="ai-loading" role="status" aria-live="polite">
+                  <div class="ai-loading-head">
+                    <span class="ai-loading-seal" aria-hidden="true"></span>
+                    <div class="ai-loading-copy">
+                      <strong>推解中</strong>
+                      <p>卦气正在层层展开，稍候便有回音。</p>
+                    </div>
+                  </div>
+                  <div class="ai-loading-waves" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                </div>
+              `
+              : state.ai.text
               ? `<div class="ai-copy">${renderMarkdown(state.ai.text)}</div>`
               : `<p class="inline-note">若你还想继续往深处听，可再参一层卦意。</p>`
           }
@@ -1177,7 +1202,7 @@ function buildInterpretation({ question, primary, changed, movingLines }) {
 }
 
 async function requestAiInterpretation() {
-  if (!state.result || !state.config.llmEnabled || state.ai.loading) {
+  if (!state.result || !state.config.llmEnabled || state.ai.loading || state.ai.text || state.result.aiText) {
     return;
   }
 
