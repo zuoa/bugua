@@ -872,6 +872,17 @@ function renderShareCard(result) {
         <p>${escapeHtml(result.interpretation.reading)}</p>
       </section>
 
+      ${
+        result.aiText
+          ? `
+      <section class="share-ai-panel">
+        <p class="eyebrow">幽微解意</p>
+        <div class="share-ai-copy">${renderMarkdown(result.aiText)}</div>
+      </section>
+      `
+          : ""
+      }
+
       <section class="share-advice-panel">
         <p class="eyebrow">应事之机</p>
         <div class="share-advice-list">
@@ -892,13 +903,13 @@ function renderShareCard(result) {
       <footer class="share-card-foot">
         <div class="share-foot-copy">
           <p class="eyebrow">带走这一卦</p>
-          <h3>扫码进入云岫卜筮，自己起一卦，再看此事如何应验。</h3>
-          <p>保存这张卦图，发给朋友或同事，对方扫码即可进入网站继续起卦。</p>
+          <h3>此卦可留，后验自明。</h3>
+          <p>保存此图，日后回看；若想另起一卦，扫一扫便可。</p>
           <small>${escapeHtml(getSiteShareUrl())}</small>
         </div>
         <div class="share-qr-panel">
           <img class="share-qr-image" src="${escapeHtml(getShareQrUrl())}" alt="云岫卜筮二维码" />
-          <span>扫码查看网站</span>
+          <span>云岫卜筮</span>
         </div>
       </footer>
     </article>
