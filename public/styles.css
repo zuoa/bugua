@@ -43,7 +43,10 @@ textarea {
 button {
   border: 0;
   background: none;
+  color: inherit;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 textarea,
@@ -357,6 +360,7 @@ input:focus {
   background: linear-gradient(135deg, rgba(251, 246, 236, 0.98), rgba(244, 234, 212, 0.94));
   border: 1px solid rgba(164, 122, 42, 0.22);
   box-shadow: 0 16px 36px rgba(97, 70, 17, 0.09);
+  color: var(--ink);
   transition: transform 260ms ease, box-shadow 260ms ease, border-color 260ms ease;
   isolation: isolate;
 }
