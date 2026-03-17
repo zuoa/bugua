@@ -1,13 +1,14 @@
-import DOMPurify from "./vendor/purify.es.mjs";
-import { marked } from "./vendor/marked.esm.js";
-
 const STORAGE_KEY = "bugua-history-v1";
 const SHARE_CARD_ID = "share-card";
-
-marked.setOptions({
-  gfm: true,
-  breaks: true
-});
+const deferredAssets = {
+  htmlToImage: null,
+  markdown: null
+};
+const markdownRenderer = {
+  domPurify: null,
+  marked: null
+};
+let deferredWarmupScheduled = false;
 
 const TRIGRAMS_BY_NUMBER = {
   1: {
@@ -427,6 +428,37 @@ function render() {
       ${renderHistoryPanel()}
     </div>
   `;
+
+  scheduleDeferredWarmup();
+}
+
+function scheduleDeferredWarmup() {
+  if (deferredWarmupScheduled) {
+    return;
+  }
+
+  deferredWarmupScheduled = true;
+
+  const run = () => {
+    deferredWarmupScheduled = false;
+
+    if (state.screen !== "result" || !state.result) {
+      return;
+    }
+
+    void loadHtmlToImage().catch(() => {});
+
+    if (state.config.llmEnabled || state.result.aiText) {
+      void loadMarkdownRenderer().catch(() => {});
+    }
+  };
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 1200 });
+    return;
+  }
+
+  window.setTimeout(run, 180);
 }
 
 function renderTopbar() {
@@ -1164,6 +1196,15 @@ async function saveResultAsImage() {
   render();
 
   try {
+    if (state.result.aiText) {
+      try {
+        await loadMarkdownRenderer();
+        render();
+      } catch {
+        // Keep plain-text fallback if markdown enhancement fails to warm up.
+      }
+    }
+
     await waitForNextFrame();
     await waitForNextFrame();
 
@@ -1174,11 +1215,12 @@ async function saveResultAsImage() {
 
     await waitForShareAssets(card);
 
-    if (!window.htmlToImage?.toPng) {
+    const htmlToImage = await loadHtmlToImage();
+    if (!htmlToImage?.toPng) {
       throw new Error("图片导出能力尚未加载完成。");
     }
 
-    const dataUrl = await window.htmlToImage.toPng(card, {
+    const dataUrl = await htmlToImage.toPng(card, {
       cacheBust: true,
       pixelRatio: 2,
       backgroundColor: "#f4ecdd",
@@ -1427,8 +1469,18 @@ function escapeHtml(value) {
 }
 
 function renderMarkdown(value) {
-  const rawHtml = marked.parse(String(value ?? ""));
-  const cleanHtml = DOMPurify.sanitize(rawHtml);
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "";
+  }
+
+  if (!markdownRenderer.marked || !markdownRenderer.domPurify) {
+    void loadMarkdownRenderer().catch(() => {});
+    return renderMarkdownFallback(text);
+  }
+
+  const rawHtml = markdownRenderer.marked.parse(text);
+  const cleanHtml = markdownRenderer.domPurify.sanitize(rawHtml);
   const template = document.createElement("template");
 
   template.innerHTML = cleanHtml;
@@ -1439,6 +1491,88 @@ function renderMarkdown(value) {
   });
 
   return template.innerHTML;
+}
+
+function renderMarkdownFallback(value) {
+  return value
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br />")}</p>`)
+    .join("");
+}
+
+async function loadMarkdownRenderer() {
+  if (markdownRenderer.marked && markdownRenderer.domPurify) {
+    return markdownRenderer;
+  }
+
+  if (!deferredAssets.markdown) {
+    deferredAssets.markdown = Promise.all([
+      import("./vendor/purify.es.mjs"),
+      import("./vendor/marked.esm.js")
+    ])
+      .then(([domPurifyModule, markedModule]) => {
+        markdownRenderer.domPurify = domPurifyModule.default;
+        markdownRenderer.marked = markedModule.marked;
+        markdownRenderer.marked.setOptions({
+          gfm: true,
+          breaks: true
+        });
+
+        if (state.ai.text || state.result?.aiText) {
+          render();
+        }
+
+        return markdownRenderer;
+      })
+      .catch((error) => {
+        deferredAssets.markdown = null;
+        throw error;
+      });
+  }
+
+  return deferredAssets.markdown;
+}
+
+async function loadHtmlToImage() {
+  if (window.htmlToImage?.toPng) {
+    return window.htmlToImage;
+  }
+
+  if (!deferredAssets.htmlToImage) {
+    deferredAssets.htmlToImage = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+
+      script.async = true;
+      script.src = "/vendor/html-to-image.js";
+      script.dataset.vendor = "html-to-image";
+
+      script.addEventListener(
+        "load",
+        () => {
+          if (window.htmlToImage?.toPng) {
+            resolve(window.htmlToImage);
+            return;
+          }
+
+          reject(new Error("图片导出能力加载失败。"));
+        },
+        { once: true }
+      );
+
+      script.addEventListener(
+        "error",
+        () => reject(new Error("图片导出能力加载失败。")),
+        { once: true }
+      );
+
+      document.head.append(script);
+    }).catch((error) => {
+      deferredAssets.htmlToImage = null;
+      return Promise.reject(error);
+    });
+  }
+
+  return deferredAssets.htmlToImage;
 }
 
 function getSiteShareUrl() {
