@@ -8,5 +8,11 @@
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "dompurify": "^3.3.3",
+    "html-to-image": "^1.11.13",
+    "marked": "^17.0.4",
+    "qrcode": "^1.5.4"
   }
 }

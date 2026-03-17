@@ -1,4 +1,13 @@
+import DOMPurify from "./vendor/purify.es.mjs";
+import { marked } from "./vendor/marked.esm.js";
+
 const STORAGE_KEY = "bugua-history-v1";
+const SHARE_CARD_ID = "share-card";
+
+marked.setOptions({
+  gfm: true,
+  breaks: true
+});
 
 const TRIGRAMS_BY_NUMBER = {
   1: {
@@ -265,6 +274,10 @@ const state = {
     loading: false,
     text: "",
     error: ""
+  },
+  share: {
+    loading: false,
+    error: ""
   }
 };
 
@@ -300,6 +313,7 @@ document.addEventListener("click", (event) => {
   if (action === "go-screen") {
     state.screen = trigger.dataset.screen;
     state.showHistory = false;
+    state.share = { loading: false, error: "" };
     render();
     return;
   }
@@ -308,6 +322,7 @@ document.addEventListener("click", (event) => {
     state.screen = "home";
     state.result = null;
     state.ai = { loading: false, text: "", error: "" };
+    state.share = { loading: false, error: "" };
     render();
     return;
   }
@@ -332,6 +347,10 @@ document.addEventListener("click", (event) => {
         text: entry.aiText || "",
         error: ""
       };
+      state.share = {
+        loading: false,
+        error: ""
+      };
       state.screen = "result";
       state.showHistory = false;
       render();
@@ -353,6 +372,11 @@ document.addEventListener("click", (event) => {
 
   if (action === "ask-ai") {
     requestAiInterpretation();
+    return;
+  }
+
+  if (action === "save-result-image") {
+    void saveResultAsImage();
   }
 });
 
@@ -399,6 +423,7 @@ function render() {
         ${renderScreen()}
       </main>
 
+      ${renderShareStage()}
       ${renderHistoryPanel()}
     </div>
   `;
@@ -410,7 +435,7 @@ function renderTopbar() {
   }
 
   return `
-    <header class="topbar">
+    <header class="topbar ${state.screen === "result" ? "topbar-result" : ""}">
       <button class="brand" data-action="go-home">
         <span class="brand-mark">卦</span>
         <span class="brand-copy">
@@ -674,11 +699,11 @@ function renderResultScreen() {
         <section class="panel ai-panel reveal delay-3">
           <div class="ai-head">
             <div>
-              <p class="eyebrow">深度解读</p>
-              <h2>再看一层，把眼前的事讲得更明白一些</h2>
+              <p class="eyebrow">幽微解意</p>
+              <h2>再入一层卦气，看看此事暗线如何流转</h2>
             </div>
             <button class="primary-button" data-action="ask-ai" ${state.ai.loading ? "disabled" : ""}>
-              ${state.ai.loading ? "生成中..." : "补充解读"}
+              ${state.ai.loading ? "卦气推衍中..." : "再参一层"}
             </button>
           </div>
           ${
@@ -688,26 +713,35 @@ function renderResultScreen() {
           }
           ${
             state.ai.text
-              ? `<div class="ai-copy">${formatMultiline(state.ai.text)}</div>`
-              : `<p class="inline-note">若你还想听得更细一些，可以继续补充解读。</p>`
+              ? `<div class="ai-copy">${renderMarkdown(state.ai.text)}</div>`
+              : `<p class="inline-note">若你还想继续往深处听，可再参一层卦意。</p>`
           }
         </section>
       `
         : `
         <section class="panel ai-panel reveal delay-3">
-          <p class="eyebrow">深度解读</p>
-          <h2>当前暂未开启</h2>
-          <p class="inline-note">先看这份解读，也足够帮助你理清当下的心绪。</p>
+          <p class="eyebrow">幽微解意</p>
+          <h2>此处天机未启</h2>
+          <p class="inline-note">先看眼前这层卦意，也已足够照见当下。</p>
         </section>
       `
     }
 
     <section class="result-actions reveal delay-3">
+      <button class="primary-button" data-action="save-result-image" ${state.share.loading ? "disabled" : ""}>
+        ${state.share.loading ? "卦图落成中..." : "保存卦图"}
+      </button>
       <button class="ghost-button" data-action="go-screen" data-screen="${result.method === "meihua" ? "meihua" : "liuyao"}">
         再起一卦
       </button>
-      <button class="primary-button" data-action="go-home">返回入口</button>
+      <button class="ghost-button" data-action="go-home">返回入口</button>
     </section>
+
+    ${
+      state.share.error
+        ? `<p class="inline-note result-note reveal delay-3">${escapeHtml(state.share.error)}</p>`
+        : ""
+    }
   `;
 }
 
@@ -789,6 +823,107 @@ function renderHistoryPanel() {
   `;
 }
 
+function renderShareStage() {
+  if (!state.result) {
+    return "";
+  }
+
+  return `
+    <div class="share-stage" aria-hidden="true">
+      ${renderShareCard(state.result)}
+    </div>
+  `;
+}
+
+function renderShareCard(result) {
+  return `
+    <article class="share-card" id="${SHARE_CARD_ID}">
+      <div class="share-card-aura share-card-aura-one"></div>
+      <div class="share-card-aura share-card-aura-two"></div>
+
+      <header class="share-card-head">
+        <div class="share-card-brand">
+          <span class="share-card-seal">卦</span>
+          <div>
+            <p class="eyebrow">云岫卜筮 · ${escapeHtml(result.methodLabel)}</p>
+            <h1>${escapeHtml(result.primary.name)}</h1>
+          </div>
+        </div>
+        <div class="share-card-meta">
+          <span>${escapeHtml(result.createdAtLabel)}</span>
+          <span>${escapeHtml(result.movingLinesLabel)}</span>
+        </div>
+      </header>
+
+      <section class="share-card-question">
+        <p class="eyebrow">所问之事</p>
+        <p>${escapeHtml(result.question)}</p>
+      </section>
+
+      <section class="share-card-grid">
+        ${renderShareHexagramCard("本卦", result.primary)}
+        ${renderShareHexagramCard("变卦", result.changed)}
+      </section>
+
+      <section class="share-reading-panel">
+        <p class="eyebrow">卦意摘要</p>
+        <h2>${escapeHtml(result.interpretation.headline)}</h2>
+        <p>${escapeHtml(result.interpretation.overview)}</p>
+        <p>${escapeHtml(result.interpretation.reading)}</p>
+      </section>
+
+      <section class="share-advice-panel">
+        <p class="eyebrow">应事之机</p>
+        <div class="share-advice-list">
+          ${result.interpretation.advice
+            .slice(0, 4)
+            .map(
+              (item) => `
+                <div class="share-advice-item">
+                  <span class="share-advice-dot"></span>
+                  <p>${escapeHtml(item)}</p>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </section>
+
+      <footer class="share-card-foot">
+        <div class="share-foot-copy">
+          <p class="eyebrow">带走这一卦</p>
+          <h3>扫码进入云岫卜筮，自己起一卦，再看此事如何应验。</h3>
+          <p>保存这张卦图，发给朋友或同事，对方扫码即可进入网站继续起卦。</p>
+          <small>${escapeHtml(getSiteShareUrl())}</small>
+        </div>
+        <div class="share-qr-panel">
+          <img class="share-qr-image" src="${escapeHtml(getShareQrUrl())}" alt="云岫卜筮二维码" />
+          <span>扫码查看网站</span>
+        </div>
+      </footer>
+    </article>
+  `;
+}
+
+function renderShareHexagramCard(title, hexagram) {
+  return `
+    <section class="share-hex-card">
+      <div class="share-hex-head">
+        <p class="eyebrow">${title}</p>
+        <h3>${escapeHtml(hexagram.name)}</h3>
+        <p>${escapeHtml(hexagram.upper.element)}上${escapeHtml(hexagram.lower.element)}下</p>
+      </div>
+      <div class="share-hex-lines">
+        ${hexagram.lines
+          .slice()
+          .reverse()
+          .map((bit, index) => renderLine(bit, 5 - index, hexagram.movingLines.includes(6 - index)))
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function handleMeihuaSubmit() {
   const question = state.forms.meihuaQuestion.trim();
   if (!question) {
@@ -834,6 +969,10 @@ function commitResult(result) {
   state.ai = {
     loading: false,
     text: result.aiText || "",
+    error: ""
+  };
+  state.share = {
+    loading: false,
     error: ""
   };
   state.screen = "result";
@@ -1000,6 +1139,47 @@ async function requestAiInterpretation() {
     state.ai.error = error instanceof Error ? error.message : "AI 解卦请求失败";
   } finally {
     state.ai.loading = false;
+    render();
+  }
+}
+
+async function saveResultAsImage() {
+  if (!state.result || state.share.loading) {
+    return;
+  }
+
+  state.share.loading = true;
+  state.share.error = "";
+  render();
+
+  try {
+    await waitForNextFrame();
+    await waitForNextFrame();
+
+    const card = document.getElementById(SHARE_CARD_ID);
+    if (!(card instanceof HTMLElement)) {
+      throw new Error("未找到可导出的卦图。");
+    }
+
+    await waitForShareAssets(card);
+
+    if (!window.htmlToImage?.toPng) {
+      throw new Error("图片导出能力尚未加载完成。");
+    }
+
+    const dataUrl = await window.htmlToImage.toPng(card, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "#f4ecdd",
+      width: card.scrollWidth,
+      height: card.scrollHeight
+    });
+
+    downloadDataUrl(dataUrl, buildShareFileName(state.result));
+  } catch (error) {
+    state.share.error = error instanceof Error ? error.message : "保存卦图失败，请稍后再试。";
+  } finally {
+    state.share.loading = false;
     render();
   }
 }
@@ -1235,8 +1415,92 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function formatMultiline(value) {
-  return escapeHtml(value).replaceAll("\n", "<br />");
+function renderMarkdown(value) {
+  const rawHtml = marked.parse(String(value ?? ""));
+  const cleanHtml = DOMPurify.sanitize(rawHtml);
+  const template = document.createElement("template");
+
+  template.innerHTML = cleanHtml;
+
+  template.content.querySelectorAll("a[href]").forEach((link) => {
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noreferrer noopener");
+  });
+
+  return template.innerHTML;
+}
+
+function getSiteShareUrl() {
+  return new URL("/", window.location.href).toString();
+}
+
+function getShareQrUrl() {
+  return `/api/share-qr?text=${encodeURIComponent(getSiteShareUrl())}`;
+}
+
+function buildShareFileName(result) {
+  const date = new Date(result.createdAt);
+  const year = `${date.getFullYear()}`;
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `bugua-${result.method}-${year}${month}${day}.png`;
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+async function waitForShareAssets(node) {
+  if (document.fonts?.ready) {
+    await document.fonts.ready;
+  }
+
+  const images = Array.from(node.querySelectorAll("img"));
+  await Promise.all(images.map(waitForImageReady));
+}
+
+async function waitForImageReady(image) {
+  if (image.complete && image.naturalWidth > 0) {
+    if (typeof image.decode === "function") {
+      try {
+        await image.decode();
+      } catch {
+        // ignore decode errors for already loaded images
+      }
+    }
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      image.removeEventListener("load", handleLoad);
+      image.removeEventListener("error", handleError);
+    };
+
+    const handleLoad = () => {
+      cleanup();
+      resolve();
+    };
+
+    const handleError = () => {
+      cleanup();
+      reject(new Error("二维码载入失败，请稍后再试。"));
+    };
+
+    image.addEventListener("load", handleLoad, { once: true });
+    image.addEventListener("error", handleError, { once: true });
+  });
+}
+
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
 }
 
 function formatDate(dateInput) {
