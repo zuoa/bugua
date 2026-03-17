@@ -188,6 +188,39 @@ const LUNAR_MONTHS = {
   腊月: 12
 };
 
+const LUNAR_DAYS = {
+  1: "初一",
+  2: "初二",
+  3: "初三",
+  4: "初四",
+  5: "初五",
+  6: "初六",
+  7: "初七",
+  8: "初八",
+  9: "初九",
+  10: "初十",
+  11: "十一",
+  12: "十二",
+  13: "十三",
+  14: "十四",
+  15: "十五",
+  16: "十六",
+  17: "十七",
+  18: "十八",
+  19: "十九",
+  20: "二十",
+  21: "廿一",
+  22: "廿二",
+  23: "廿三",
+  24: "廿四",
+  25: "廿五",
+  26: "廿六",
+  27: "廿七",
+  28: "廿八",
+  29: "廿九",
+  30: "三十"
+};
+
 const LINE_GUIDANCE = {
   1: "初爻动，提醒先把根基打稳，起步宜小不宜躁。",
   2: "二爻动，说明顺势配合比单打独斗更容易见效。",
@@ -1323,6 +1356,7 @@ function getLunarInfo(date) {
   const yearName = parts.find((item) => item.type === "yearName")?.value || "甲子";
   const monthLabel = parts.find((item) => item.type === "month")?.value || "正月";
   const dayRaw = parts.find((item) => item.type === "day")?.value || "1";
+  const day = parseLunarDay(dayRaw);
   const yearBranchName = yearName.slice(-1);
   const yearBranchNumber =
     EARTHLY_BRANCHES.find((item) => item.name === yearBranchName)?.number || 1;
@@ -1332,8 +1366,8 @@ function getLunarInfo(date) {
     yearBranchName,
     yearBranchNumber,
     month: parseLunarMonth(monthLabel),
-    day: parseLunarDay(dayRaw),
-    display: `${yearName}年 ${monthLabel}${dayRaw}`
+    day,
+    display: `${yearName}年 ${monthLabel}${formatLunarDay(day)}`
   };
 }
 
@@ -1355,46 +1389,18 @@ function parseLunarMonth(label) {
   return numeric ? parseInt(numeric[0], 10) : 1;
 }
 
+function formatLunarDay(day) {
+  return LUNAR_DAYS[day] || `初${day}`;
+}
+
 function parseLunarDay(label) {
   const numeric = parseInt(label, 10);
   if (!Number.isNaN(numeric)) {
     return numeric;
   }
 
-  const dayMap = {
-    初一: 1,
-    初二: 2,
-    初三: 3,
-    初四: 4,
-    初五: 5,
-    初六: 6,
-    初七: 7,
-    初八: 8,
-    初九: 9,
-    初十: 10,
-    十一: 11,
-    十二: 12,
-    十三: 13,
-    十四: 14,
-    十五: 15,
-    十六: 16,
-    十七: 17,
-    十八: 18,
-    十九: 19,
-    二十: 20,
-    廿一: 21,
-    廿二: 22,
-    廿三: 23,
-    廿四: 24,
-    廿五: 25,
-    廿六: 26,
-    廿七: 27,
-    廿八: 28,
-    廿九: 29,
-    三十: 30
-  };
-
-  return dayMap[label] || 1;
+  const dayEntry = Object.entries(LUNAR_DAYS).find(([, dayName]) => dayName === label);
+  return dayEntry ? parseInt(dayEntry[0], 10) : 1;
 }
 
 function inferDomain(question) {
