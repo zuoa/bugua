@@ -20,20 +20,17 @@
 
 ## Google Analytics 配置
 
-项目已支持按环境变量注入 Google Analytics 4。
+项目当前已在前端写死 Google Analytics 4 Measurement ID。
 
-如果要启用：
+当前使用的 ID：
 
-1. 在 Cloudflare Worker 里配置变量：
-
-```toml
-[vars]
-GOOGLE_ANALYTICS_ID = "G-XXXXXXXXXX"
+```text
+G-BFEYKKMYN8
 ```
 
-2. 重新发布：`npm run deploy`
+如需更换，修改 `public/app.js` 顶部的 `GOOGLE_ANALYTICS_ID` 常量后重新部署。
 
-未配置时，前端不会加载 GA 脚本，也不会发送埋点。
+部署后前端会直接加载 GA 脚本并发送埋点，不依赖 Worker 环境变量。
 
 ## 深度解读配置
 

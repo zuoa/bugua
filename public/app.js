@@ -1,6 +1,6 @@
 const STORAGE_KEY = "bugua-history-v1";
 const SHARE_CARD_ID = "share-card";
-const APP_CONFIG = window.__BUGUA_CONFIG__ || {};
+const GOOGLE_ANALYTICS_ID = "G-BFEYKKMYN8";
 const deferredAssets = {
   htmlToImage: null,
   markdown: null
@@ -10,7 +10,7 @@ const markdownRenderer = {
   marked: null
 };
 const analytics = {
-  measurementId: normalizeMeasurementId(APP_CONFIG.gaMeasurementId),
+  measurementId: normalizeMeasurementId(GOOGLE_ANALYTICS_ID),
   scriptLoading: null,
   lastPageKey: ""
 };
@@ -1554,6 +1554,7 @@ function initAnalytics() {
     anonymize_ip: true,
     send_page_view: false
   });
+  trackPageView();
 
   if (analytics.scriptLoading) {
     return;
