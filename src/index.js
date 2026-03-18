@@ -79,10 +79,12 @@ async function handleIndexHtml(request, env) {
 
   const canonicalUrl = new URL("/", request.url).toString();
   const ogImageUrl = new URL("/og-image.svg", request.url).toString();
+  const gaMeasurementId = getGoogleAnalyticsId(env);
   const html = await assetResponse.text();
   const rendered = html
     .replaceAll("__CANONICAL_URL__", canonicalUrl)
-    .replaceAll("__OG_IMAGE_URL__", ogImageUrl);
+    .replaceAll("__OG_IMAGE_URL__", ogImageUrl)
+    .replaceAll("__GA_MEASUREMENT_ID_JSON__", JSON.stringify(gaMeasurementId));
 
   const headers = new Headers(assetResponse.headers);
   headers.set("Content-Type", "text/html; charset=utf-8");
@@ -312,6 +314,10 @@ function extractAssistantText(data) {
 
 function getApiKey(env) {
   return env.DEEPSEEK_API_KEY || "";
+}
+
+function getGoogleAnalyticsId(env) {
+  return String(env.GOOGLE_ANALYTICS_ID || env.GA_MEASUREMENT_ID || "").trim();
 }
 
 function json(data, status = 200) {

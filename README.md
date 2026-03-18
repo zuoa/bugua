@@ -18,6 +18,23 @@
 1. 登录 Cloudflare：`npx wrangler login`
 2. 发布：`npm run deploy`
 
+## Google Analytics 配置
+
+项目已支持按环境变量注入 Google Analytics 4。
+
+如果要启用：
+
+1. 在 Cloudflare Worker 里配置变量：
+
+```toml
+[vars]
+GOOGLE_ANALYTICS_ID = "G-XXXXXXXXXX"
+```
+
+2. 重新发布：`npm run deploy`
+
+未配置时，前端不会加载 GA 脚本，也不会发送埋点。
+
 ## 深度解读配置
 
 未配置时，页面会使用前端内置的积极向上解读。

@@ -1,5 +1,6 @@
 const STORAGE_KEY = "bugua-history-v1";
 const SHARE_CARD_ID = "share-card";
+const APP_CONFIG = window.__BUGUA_CONFIG__ || {};
 const deferredAssets = {
   htmlToImage: null,
   markdown: null
@@ -7,6 +8,11 @@ const deferredAssets = {
 const markdownRenderer = {
   domPurify: null,
   marked: null
+};
+const analytics = {
+  measurementId: normalizeMeasurementId(APP_CONFIG.gaMeasurementId),
+  scriptLoading: null,
+  lastPageKey: ""
 };
 let deferredWarmupScheduled = false;
 
@@ -320,6 +326,7 @@ const root = document.querySelector("#app");
 init();
 
 function init() {
+  initAnalytics();
   render();
   void loadConfig();
 }
@@ -333,6 +340,9 @@ document.addEventListener("click", (event) => {
   const action = trigger.dataset.action;
 
   if (action === "open-history") {
+    trackEvent("open_history", {
+      history_count: state.history.length
+    });
     state.showHistory = true;
     render();
     return;
@@ -345,6 +355,9 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "go-screen") {
+    trackEvent("select_divination_method", {
+      method: trigger.dataset.screen || ""
+    });
     state.screen = trigger.dataset.screen;
     state.showHistory = false;
     state.share = { loading: false, error: "" };
@@ -375,6 +388,9 @@ document.addEventListener("click", (event) => {
   if (action === "review-history") {
     const entry = state.history.find((item) => item.id === trigger.dataset.id);
     if (entry) {
+      trackEvent("review_history_result", {
+        method: entry.method
+      });
       state.result = entry;
       state.ai = {
         loading: false,
@@ -398,6 +414,9 @@ document.addEventListener("click", (event) => {
     if (!approved) {
       return;
     }
+    trackEvent("clear_history", {
+      history_count: state.history.length
+    });
     state.history = [];
     persistHistory();
     render();
@@ -463,6 +482,7 @@ function render() {
   `;
 
   scheduleDeferredWarmup();
+  trackPageView();
 }
 
 function scheduleDeferredWarmup() {
@@ -1066,6 +1086,11 @@ function handleLiuyaoToss() {
 }
 
 function commitResult(result) {
+  trackEvent("generate_divination", {
+    method: result.method,
+    moving_lines_count: result.movingLines.length,
+    has_ai_cached: result.aiText ? "yes" : "no"
+  });
   state.result = result;
   state.ai = {
     loading: false,
@@ -1206,6 +1231,9 @@ async function requestAiInterpretation() {
     return;
   }
 
+  trackEvent("request_ai_interpretation", {
+    method: state.result.method
+  });
   state.ai.loading = true;
   state.ai.error = "";
   render();
@@ -1236,8 +1264,14 @@ async function requestAiInterpretation() {
     state.ai.error = "";
     state.result.aiText = state.ai.text;
     updateHistoryEntry(state.result.id, { aiText: state.ai.text });
+    trackEvent("receive_ai_interpretation", {
+      method: state.result.method
+    });
   } catch (error) {
     state.ai.error = error instanceof Error ? error.message : "AI 解卦请求失败";
+    trackEvent("ai_interpretation_error", {
+      method: state.result.method
+    });
   } finally {
     state.ai.loading = false;
     render();
@@ -1249,6 +1283,10 @@ async function saveResultAsImage() {
     return;
   }
 
+  trackEvent("save_result_image_attempt", {
+    method: state.result.method,
+    has_ai: state.result.aiText ? "yes" : "no"
+  });
   state.share.loading = true;
   state.share.error = "";
   render();
@@ -1287,8 +1325,16 @@ async function saveResultAsImage() {
     });
 
     downloadDataUrl(dataUrl, buildShareFileName(state.result));
+    trackEvent("save_result_image_success", {
+      method: state.result.method,
+      has_ai: state.result.aiText ? "yes" : "no"
+    });
   } catch (error) {
     state.share.error = error instanceof Error ? error.message : "保存卦图失败，请稍后再试。";
+    trackEvent("save_result_image_error", {
+      method: state.result.method,
+      has_ai: state.result.aiText ? "yes" : "no"
+    });
   } finally {
     state.share.loading = false;
     render();
@@ -1488,6 +1534,104 @@ function createId() {
     return window.crypto.randomUUID();
   }
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeMeasurementId(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function initAnalytics() {
+  if (!analytics.measurementId || window.gtag) {
+    return;
+  }
+
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function gtag() {
+    window.dataLayer.push(arguments);
+  };
+  window.gtag("js", new Date());
+  window.gtag("config", analytics.measurementId, {
+    anonymize_ip: true,
+    send_page_view: false
+  });
+
+  if (analytics.scriptLoading) {
+    return;
+  }
+
+  analytics.scriptLoading = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(
+      analytics.measurementId
+    )}`;
+
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error("Google Analytics 加载失败。")), {
+      once: true
+    });
+
+    document.head.append(script);
+  }).catch(() => {
+    analytics.scriptLoading = null;
+  });
+}
+
+function trackPageView() {
+  if (!window.gtag || !analytics.measurementId) {
+    return;
+  }
+
+  const page = getVirtualPage();
+  const pageKey = `${page.path}|${page.title}`;
+  if (analytics.lastPageKey === pageKey) {
+    return;
+  }
+
+  analytics.lastPageKey = pageKey;
+
+  window.gtag("event", "page_view", {
+    page_title: page.title,
+    page_location: new URL(page.path, window.location.origin).toString(),
+    page_path: page.path
+  });
+}
+
+function trackEvent(name, params = {}) {
+  if (!window.gtag || !analytics.measurementId) {
+    return;
+  }
+
+  window.gtag("event", name, params);
+}
+
+function getVirtualPage() {
+  if (state.screen === "meihua") {
+    return {
+      path: "/meihua",
+      title: "梅花易数时间起卦"
+    };
+  }
+
+  if (state.screen === "liuyao") {
+    return {
+      path: "/liuyao",
+      title: "六爻三币起卦"
+    };
+  }
+
+  if (state.screen === "result" && state.result) {
+    return {
+      path: `/result/${state.result.method}`,
+      title: `${state.result.methodLabel}结果页`
+    };
+  }
+
+  return {
+    path: "/",
+    title: "云岫卜筮首页"
+  };
 }
 
 function escapeHtml(value) {
